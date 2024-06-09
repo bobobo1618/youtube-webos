@@ -2,6 +2,11 @@ const CONFIG_KEY = 'ytaf-configuration';
 
 const configOptions = new Map([
   ['enableAdBlock', { default: true, desc: 'Enable ad blocking' }],
+  ['enableDeArrow', { default: true, desc: 'Enable dearrow' }],
+  [
+    'enableDeArrowThumbnails',
+    { default: true, desc: 'Enable dearrow thumbnails' }
+  ],
   ['enableSponsorBlock', { default: true, desc: 'Enable SponsorBlock' }],
   [
     'enableSponsorBlockSponsor',

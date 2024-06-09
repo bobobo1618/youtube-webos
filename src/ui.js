@@ -120,6 +120,8 @@ function createOptionsPanel() {
   elmContainer.appendChild(elmHeading);
 
   elmContainer.appendChild(createConfigCheckbox('enableAdBlock'));
+  elmContainer.appendChild(createConfigCheckbox('enableDeArrow'));
+  elmContainer.appendChild(createConfigCheckbox('enableDeArrowThumbnails'));
   elmContainer.appendChild(createConfigCheckbox('hideLogo'));
   elmContainer.appendChild(createConfigCheckbox('enableSponsorBlock'));
 

@@ -14,60 +14,102 @@ import { configRead } from './config';
 const origParse = JSON.parse;
 JSON.parse = function () {
   const r = origParse.apply(this, arguments);
-  if (!configRead('enableAdBlock')) {
-    return r;
-  }
-
-  if (r.adPlacements) {
+  if (r.adPlacements && configRead('enableAdBlock')) {
     r.adPlacements = [];
   }
 
-  if (Array.isArray(r.adSlots)) {
+  // Also set playerAds to false, just incase.
+  if (r.playerAds && configRead('enableAdBlock')) {
+    r.playerAds = false;
+  }
+
+  // Also set adSlots to an empty array, emptying only the adPlacements won't work.
+  if (r.adSlots && configRead('enableAdBlock')) {
     r.adSlots = [];
   }
 
-  // remove ads from home
-  const homeSectionListRenderer =
+  // Drop "masthead" ad from home screen
+  if (
     r?.contents?.tvBrowseRenderer?.content?.tvSurfaceContentRenderer?.content
-      ?.sectionListRenderer;
-  if (homeSectionListRenderer?.contents) {
-    // Drop the full width ad card, usually appears at the top of the page
-    homeSectionListRenderer.contents = homeSectionListRenderer.contents.filter(
-      (elm) => !elm.tvMastheadRenderer
+      ?.sectionListRenderer?.contents &&
+    configRead('enableAdBlock')
+  ) {
+    r.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.sectionListRenderer.contents =
+      r.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content.sectionListRenderer.contents.filter(
+        (elm) => !elm.adSlotRenderer
+      );
+  }
+
+  // DeArrow Implementation. I think this is the best way to do it. (DOM manipulation would be a pain)
+
+  if (
+    r?.contents?.tvBrowseRenderer?.content?.tvSurfaceContentRenderer?.content
+      ?.sectionListRenderer?.contents
+  ) {
+    processShelves(
+      r.contents.tvBrowseRenderer.content.tvSurfaceContentRenderer.content
+        .sectionListRenderer.contents
     );
-
-    // Drop ad tile from the horizontal shelf
-    removeAdSlotRenderer(homeSectionListRenderer);
   }
 
-  // remove ad tile from search
-  const searchSectionListRenderer = r?.contents?.sectionListRenderer;
-  if (searchSectionListRenderer?.contents) {
-    removeAdSlotRenderer(searchSectionListRenderer);
+  if (r?.continuationContents?.sectionListContinuation?.contents) {
+    processShelves(r.continuationContents.sectionListContinuation.contents);
   }
 
+  if (r?.continuationContents?.horizontalListContinuation?.items) {
+    deArrowify(r.continuationContents.horizontalListContinuation.items);
+  }
   return r;
 };
 
-// Drop `adSlotRenderer`
-// `adSlotRenderer` can occur as,
-// - sectionListRenderer.contents[*].adSlotRenderer
-// - sectionListRenderer.contents[*].shelfRenderer.content.horizontalListRenderer.items[*].adSlotRenderer
-function removeAdSlotRenderer(sectionListRenderer) {
-  // sectionListRenderer.contents[*].adSlotRenderer
-  sectionListRenderer.contents = sectionListRenderer.contents.filter(
-    (elm) => !elm.adSlotRenderer
-  );
+function processShelves(shelves) {
+  for (const shelve of shelves) {
+    if (shelve.shelfRenderer) {
+      deArrowify(shelve.shelfRenderer.content.horizontalListRenderer.items);
+    }
+  }
+}
 
-  // sectionListRenderer.contents[*].shelfRenderer.content.horizontalListRenderer.items[*].adSlotRenderer
-  const contentsWithShelfRenderer = sectionListRenderer.contents.filter(
-    (elm) => elm.shelfRenderer
-  );
-  contentsWithShelfRenderer.forEach((content) => {
-    const horizontalRenderer =
-      content.shelfRenderer.content.horizontalListRenderer;
-    horizontalRenderer.items = horizontalRenderer.items.filter(
-      (elm) => !elm.adSlotRenderer
-    );
-  });
+function deArrowify(items) {
+  for (const item of items) {
+    if (item.adSlotRenderer) {
+      const index = items.indexOf(item);
+      items.splice(index, 1);
+      continue;
+    }
+    if (configRead('enableDeArrow')) {
+      const videoID = item.tileRenderer.contentId;
+      fetch(`https://sponsor.ajay.app/api/branding?videoID=${videoID}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.titles.length > 0) {
+            const mostVoted = data.titles.reduce((max, title) =>
+              max.votes > title.votes ? max : title
+            );
+            item.tileRenderer.metadata.tileMetadataRenderer.title.simpleText =
+              mostVoted.title;
+          }
+
+          if (
+            data.thumbnails.length > 0 &&
+            configRead('enableDeArrowThumbnails')
+          ) {
+            const mostVotedThumbnail = data.thumbnails.reduce(
+              (max, thumbnail) =>
+                max.votes > thumbnail.votes ? max : thumbnail
+            );
+            if (mostVotedThumbnail.timestamp) {
+              item.tileRenderer.header.tileHeaderRenderer.thumbnail.thumbnails =
+                [
+                  {
+                    url: `https://dearrow-thumb.ajay.app/api/v1/getThumbnail?videoID=${videoID}&time=${mostVotedThumbnail.timestamp}`,
+                    width: 1280,
+                    height: 640
+                  }
+                ];
+            }
+          }
+        });
+    }
+  }
 }
